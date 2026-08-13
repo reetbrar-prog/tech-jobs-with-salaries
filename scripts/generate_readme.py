@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +24,8 @@ FEEDS = [
 
 MAX_ROWS = 175          # per table
 MAX_PER_COMPANY = 3     # keep the tables from becoming one company's careers page
+
+SITE = "https://forgeapply.com"
 
 # The feeds are tech-focused, but titles from ~600 scraped boards are messy.
 # Belt-and-suspenders exclusion of clearly non-tech roles.
@@ -42,6 +45,24 @@ def fetch(url: str) -> list[dict]:
     with urllib.request.urlopen(req, timeout=60) as resp:
         payload = json.load(resp)
     return payload.get("jobs", [])
+
+
+def strip_tracking(url: str | None) -> str:
+    """Drop utm_* query params so the link we publish is a clean canonical
+    forgeapply.com URL, not a tracked one. See CONTRIBUTING.md / README for why."""
+    if not url:
+        return SITE
+    parts = urllib.parse.urlsplit(url)
+    if not parts.query:
+        return url
+    kept = [
+        (k, v)
+        for k, v in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+        if not k.lower().startswith("utm_")
+    ]
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(kept), parts.fragment)
+    )
 
 
 def age_label(posted_at: str | None) -> str:
@@ -96,24 +117,10 @@ def table(jobs: list[dict]) -> str:
                 l=md_escape(j.get("location") or "—"),
                 s=j.get("salary", ""),
                 a=age_label(j.get("posted_at")),
-                u=j.get("url", "https://forgeapply.com"),
+                u=strip_tracking(j.get("url")),
             )
         )
     return "\n".join(lines)
-
-
-CTA_TOP = (
-    "> **Tired of rewriting your resume for every posting?** "
-    "[ForgeApply](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo) "
-    "tailors your resume to each specific job using only your real experience (it never invents anything), "
-    "autofills the application, and preps you for the interview. Free 7-day trial, no card required."
-)
-
-CTA_BOTTOM = (
-    "> **Applying to a few of these tonight?** The tedious part is retyping your work history into every form. "
-    "[ForgeApply's extension](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo) "
-    "autofills applications on the job platforms startups use and attaches the resume it tailored for that exact posting."
-)
 
 
 def render(sections: list[tuple[str, list[dict]]]) -> str:
@@ -125,32 +132,44 @@ def render(sections: list[tuple[str, list[dict]]]) -> str:
     parts = [
         "# Tech Jobs With Salaries",
         "",
-        "**Every listing here shows real, disclosed pay.** Live tech roles at startups and tech companies, "
-        "pulled daily from the job boards startups actually hire through. No salary listed, not on this list.",
-        "",
-        f"Last updated: **{now:%Y-%m-%d}** (UTC) · {total} roles · updates daily via GitHub Actions · "
-        "⭐ star this repo to check back during your search",
+        f"**{total} live roles, every one with disclosed pay.** "
+        f"Last updated **{now:%Y-%m-%d %H:%M} UTC** · regenerates daily via GitHub Actions.",
         "",
         toc,
-        "",
-        CTA_TOP,
         "",
     ]
     for label, jobs in sections:
         parts += [f"## {label}", "", table(jobs), ""]
     parts += [
-        CTA_BOTTOM,
+        "---",
         "",
-        "## About this list",
+        "## How this is built",
         "",
-        "Maintained by [ForgeApply](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo). "
-        "Listings come from live postings on public startup job boards; each links to a job page with the full "
-        "description, salary context for its metro, and a link to the original posting. Stale roles are retired "
-        "automatically when they disappear from the source board.",
+        "- **Source:** live postings pulled from company Greenhouse, Ashby, Workday, Lever, and Workable "
+        "boards — the ATSs startups and tech companies actually hire through.",
+        "- **Frequency:** this file is regenerated every day by "
+        "[`scripts/generate_readme.py`](scripts/generate_readme.py) via GitHub Actions, from ForgeApply's "
+        "public job feeds.",
+        "- **\"Disclosed salary\" means:** the employer's own posting includes a specific number or range. "
+        "No range on the source posting, not on this list — no estimates, no third-party guesses.",
+        "- **Filtering:** capped at 3 listings per company so no single employer dominates the table, "
+        "plus a keyword filter that drops obviously non-tech roles (recruiting, sales, clinical, etc.) "
+        "that slip into the source feeds.",
         "",
-        "Found a dead link or a miscategorized role? [Open an issue](../../issues). "
-        "The tables are regenerated daily, so edit `scripts/generate_readme.py`, not the tables themselves. "
-        "See [CONTRIBUTING.md](CONTRIBUTING.md).",
+        f"Full search, filters, and the rest of the corpus: [forgeapply.com]({SITE}).",
+        "",
+        "## Contributing",
+        "",
+        "This file is generated — don't hand-edit the tables, they'll be overwritten within a day. "
+        "Found a dead link, an expired role, or a miscategorized listing? [Open an issue](../../issues) "
+        "with the company and role name. Want to fix it yourself? PRs against "
+        "`scripts/generate_readme.py` (e.g. adding a pattern to `NON_TECH`) are welcome — see "
+        "[CONTRIBUTING.md](CONTRIBUTING.md).",
+        "",
+        "## License",
+        "",
+        "Code in this repo is [MIT licensed](LICENSE). Job listing data is aggregated from public "
+        "postings and provided as-is for personal job-search use.",
         "",
     ]
     return "\n".join(parts)

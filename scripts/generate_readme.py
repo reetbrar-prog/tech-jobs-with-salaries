@@ -23,6 +23,7 @@ FEEDS = [
 
 MAX_ROWS = 175          # per table
 MAX_PER_COMPANY = 3     # keep the tables from becoming one company's careers page
+SAMPLE_ROWS = 15        # rows shown in the top-of-README sample table
 
 # The feeds are tech-focused, but titles from ~600 scraped boards are messy.
 # Belt-and-suspenders exclusion of clearly non-tech roles.
@@ -102,57 +103,57 @@ def table(jobs: list[dict]) -> str:
     return "\n".join(lines)
 
 
-CTA_TOP = (
-    "> **Tired of rewriting your resume for every posting?** "
-    "[ForgeApply](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo) "
-    "tailors your resume to each specific job using only your real experience (it never invents anything), "
-    "autofills the application, and preps you for the interview. Free 7-day trial, no card required."
-)
-
-CTA_BOTTOM = (
-    "> **Applying to a few of these tonight?** The tedious part is retyping your work history into every form. "
-    "[ForgeApply's extension](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo) "
-    "autofills applications on the job platforms startups use and attaches the resume it tailored for that exact posting."
-)
-
-
 def render(sections: list[tuple[str, list[dict]]]) -> str:
     now = datetime.now(timezone.utc)
     total = sum(len(jobs) for _, jobs in sections)
+
+    # Newest-across-both-sections sample for the top of the README. Each
+    # section's jobs are already newest-first, so a simple merge by
+    # posted_at (falling back to insertion order when missing) is enough.
+    combined = sorted(
+        (j for _, jobs in sections for j in jobs),
+        key=lambda j: j.get("posted_at") or "",
+        reverse=True,
+    )
+    sample = combined[:SAMPLE_ROWS]
+
     toc = " · ".join(
         f"[{label} ({len(jobs)})](#{label.lower().replace(' ', '-')})" for label, jobs in sections
     )
+
     parts = [
         "# Tech Jobs With Salaries",
         "",
-        "**Every listing here shows real, disclosed pay.** Live tech roles at startups and tech companies, "
-        "pulled daily from the job boards startups actually hire through. No salary listed, not on this list.",
+        "Live tech roles at startups and tech companies — early-career and senior — where the employer "
+        "disclosed pay. Pulled daily from the job boards startups actually hire through. No salary listed, "
+        "not on this list.",
         "",
-        f"Last updated: **{now:%Y-%m-%d}** (UTC) · {total} roles · updates daily via GitHub Actions · "
-        "⭐ star this repo to check back during your search",
+        f"**Last updated:** {now:%Y-%m-%d} (UTC) · **{total} roles** · updates daily via GitHub Actions",
         "",
-        toc,
+        f"### Sample ({len(sample)} of {total})",
         "",
-        CTA_TOP,
+        table(sample),
+        "",
+        f"Full current list (same {total} roles, refreshed daily) is further down this page, split by career "
+        f"stage: {toc}.",
+        "",
+        "## How to contribute",
+        "",
+        "This list is generated, not hand-edited — see [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR "
+        "against the tables. The two useful contributions:",
+        "",
+        "- **Dead link or expired role?** [Open an issue](../../issues) with the company and role name.",
+        "- **Non-tech role slipped through the filter?** Open an issue, or send a PR adding a pattern to the "
+        "`NON_TECH` regex in `scripts/generate_readme.py`.",
+        "",
+        "## Who makes this",
+        "",
+        "Maintained by [ForgeApply](https://forgeapply.com), which tailors resumes and autofills job "
+        "applications. This repo is just the public data feed behind that — no sign-up needed to use the list.",
         "",
     ]
     for label, jobs in sections:
         parts += [f"## {label}", "", table(jobs), ""]
-    parts += [
-        CTA_BOTTOM,
-        "",
-        "## About this list",
-        "",
-        "Maintained by [ForgeApply](https://forgeapply.com?utm_source=github&utm_medium=repo&utm_campaign=jobs_with_salaries_repo). "
-        "Listings come from live postings on public startup job boards; each links to a job page with the full "
-        "description, salary context for its metro, and a link to the original posting. Stale roles are retired "
-        "automatically when they disappear from the source board.",
-        "",
-        "Found a dead link or a miscategorized role? [Open an issue](../../issues). "
-        "The tables are regenerated daily, so edit `scripts/generate_readme.py`, not the tables themselves. "
-        "See [CONTRIBUTING.md](CONTRIBUTING.md).",
-        "",
-    ]
     return "\n".join(parts)
 
 
